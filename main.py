@@ -37,6 +37,7 @@ class ReservationIn(BaseModel):
     email: EmailStr
     guests: str = ""
     date: str
+    time: str = ""
     message: str = ""
 
 class StatusUpdate(BaseModel):
@@ -75,6 +76,7 @@ async def reserve(request: Request, data: ReservationIn, db: Session = Depends(g
             email=data.email,
             guests=data.guests,
             date=data.date,
+            time=data.time,
             message=data.message,
         )
         db.add(reservation)
@@ -96,6 +98,7 @@ async def reserve(request: Request, data: ReservationIn, db: Session = Depends(g
         Email: {data.email}
         Guests: {data.guests}
         Date: {data.date}
+        Time: {data.time}
         Message: {data.message}
         """
 
@@ -105,6 +108,33 @@ async def reserve(request: Request, data: ReservationIn, db: Session = Depends(g
         server.starttls()
         server.login(sender, password)
         server.send_message(msg)
+
+        # Send confirmation to customer
+        customer_msg = MIMEMultipart()
+        customer_msg["From"] = sender
+        customer_msg["To"] = data.email
+        customer_msg["Subject"] = "Reservation Confirmed - Savoria"
+
+        customer_body = f"""
+        Dear {data.name},
+
+        Thank you for your reservation at Savoria!
+
+        Here are your booking details:
+        
+        Date: {data.date}
+        Time: {data.time}
+        Guests: {data.guests}
+        Special Requests: {data.message}
+
+        We look forward to welcoming you!
+
+        Warm regards,
+        The Savoria Team
+        """
+
+        customer_msg.attach(MIMEText(customer_body, "plain"))
+        server.sendmail(sender, data.email, customer_msg.as_string())
         server.quit()
 
         return {"success": True, "message": "Reservation received!"}
@@ -125,6 +155,60 @@ async def update_status(id: int, update: StatusUpdate, db: Session = Depends(get
         raise HTTPException(status_code=404, detail="Reservation not found")
     reservation.status = update.status
     db.commit()
+
+    try:
+        sender = os.getenv("GMAIL_USER")
+        password = os.getenv("GMAIL_PASSWORD")
+
+        msg = MIMEMultipart()
+        msg["From"] = sender
+        msg["To"] = reservation.email
+
+        if update.status == "confirmed":
+            msg["Subject"] = "Reservation Confirmed - Savoria"
+            body = f"""
+        Dear {reservation.name},
+
+        Great news! Your reservation at Savoria has been confirmed.
+
+        Booking Details:
+        Date: {reservation.date}
+        Time: {reservation.time}
+        Guests: {reservation.guests}
+
+        We look forward to welcoming you!
+
+        Warm regards,
+        The Savoria Team
+            """
+        else:
+            msg["Subject"] = "Reservation Update - Savoria"
+            body = f"""
+        Dear {reservation.name},
+
+        Unfortunately we are unable to accommodate your reservation at this time.
+
+        Date requested: {reservation.date}
+        Time: {reservation.time}
+        Guests: {reservation.guests}
+
+        Please contact us directly to find an alternative date.
+
+        We apologize for the inconvenience.
+
+        Warm regards,
+        The Savoria Team
+            """
+
+        msg.attach(MIMEText(body, "plain"))
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(sender, password)
+        server.send_message(msg)
+        server.quit()
+    except Exception as e:
+        print("Email error:", e)
+
     return {"success": True}
 
 @app.delete("/admin/reservations/{id}")

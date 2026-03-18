@@ -21,6 +21,7 @@ class ReservationModel(Base):
     email = Column(String)
     guests = Column(String)
     date = Column(String)
+    time = Column(String, default="")
     message = Column(String)
     status = Column(String, default="pending")
     created_at = Column(DateTime, default=datetime.now)

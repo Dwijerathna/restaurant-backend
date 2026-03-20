@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Depends, HTTPException, status
+from fastapi import FastAPI, Request, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
@@ -17,6 +17,8 @@ from email.mime.multipart import MIMEMultipart
 
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 create_tables()
+
+RESTAURANT_NAME = os.getenv("RESTAURANT_NAME", "Savoria")
 
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI()
@@ -52,13 +54,8 @@ def get_current_admin(token: str = Depends(oauth2_scheme)):
 @app.post("/token")
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     try:
-        print("Login attempt:", form_data.username)
-        print("ADMIN_USERNAME:", ADMIN_USERNAME)
-        print("ADMIN_PASSWORD:", ADMIN_PASSWORD)
         hashed = get_password_hash(ADMIN_PASSWORD)
-        print("Hashed:", hashed)
         verified = verify_password(form_data.password, hashed)
-        print("Verified:", verified)
         if form_data.username != ADMIN_USERNAME or not verified:
             raise HTTPException(status_code=400, detail="Incorrect username or password")
         token = create_access_token({"sub": form_data.username})
@@ -89,11 +86,11 @@ async def reserve(request: Request, data: ReservationIn, db: Session = Depends(g
         msg = MIMEMultipart()
         msg["From"] = sender
         msg["To"] = receiver
-        msg["Subject"] = f"New Reservation from {data.name}"
+        msg["Subject"] = f"New Reservation from {data.name} - {RESTAURANT_NAME}"
 
         body = f"""
-        New Reservation Request:
-        
+        New Reservation Request - {RESTAURANT_NAME}:
+
         Name: {data.name}
         Email: {data.email}
         Guests: {data.guests}
@@ -109,28 +106,27 @@ async def reserve(request: Request, data: ReservationIn, db: Session = Depends(g
         server.login(sender, password)
         server.send_message(msg)
 
-        # Send confirmation to customer
         customer_msg = MIMEMultipart()
         customer_msg["From"] = sender
         customer_msg["To"] = data.email
-        customer_msg["Subject"] = "Reservation Confirmed - Savoria"
+        customer_msg["Subject"] = f"Reservation Received - {RESTAURANT_NAME}"
 
         customer_body = f"""
         Dear {data.name},
 
-        Thank you for your reservation at Savoria!
+        Thank you for your reservation at {RESTAURANT_NAME}!
 
         Here are your booking details:
-        
+
         Date: {data.date}
         Time: {data.time}
         Guests: {data.guests}
         Special Requests: {data.message}
 
-        We look forward to welcoming you!
+        We will confirm your reservation shortly.
 
         Warm regards,
-        The Savoria Team
+        The {RESTAURANT_NAME} Team
         """
 
         customer_msg.attach(MIMEText(customer_body, "plain"))
@@ -165,11 +161,11 @@ async def update_status(id: int, update: StatusUpdate, db: Session = Depends(get
         msg["To"] = reservation.email
 
         if update.status == "confirmed":
-            msg["Subject"] = "Reservation Confirmed - Savoria"
+            msg["Subject"] = f"Reservation Confirmed - {RESTAURANT_NAME}"
             body = f"""
         Dear {reservation.name},
 
-        Great news! Your reservation at Savoria has been confirmed.
+        Great news! Your reservation at {RESTAURANT_NAME} has been confirmed.
 
         Booking Details:
         Date: {reservation.date}
@@ -179,10 +175,10 @@ async def update_status(id: int, update: StatusUpdate, db: Session = Depends(get
         We look forward to welcoming you!
 
         Warm regards,
-        The Savoria Team
+        The {RESTAURANT_NAME} Team
             """
         else:
-            msg["Subject"] = "Reservation Update - Savoria"
+            msg["Subject"] = f"Reservation Update - {RESTAURANT_NAME}"
             body = f"""
         Dear {reservation.name},
 
@@ -197,7 +193,7 @@ async def update_status(id: int, update: StatusUpdate, db: Session = Depends(get
         We apologize for the inconvenience.
 
         Warm regards,
-        The Savoria Team
+        The {RESTAURANT_NAME} Team
             """
 
         msg.attach(MIMEText(body, "plain"))
@@ -222,4 +218,4 @@ async def delete_reservation(id: int, db: Session = Depends(get_db), admin: str 
 
 @app.get("/")
 def root():
-    return {"message": "Savoria API is running!"}
+    return {"message": f"{RESTAURANT_NAME} API is running!"}

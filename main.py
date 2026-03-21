@@ -12,6 +12,7 @@ from database import get_db, create_tables, ReservationModel as DBReservation
 from auth import verify_password, create_access_token, verify_token, get_password_hash, ADMIN_USERNAME, ADMIN_PASSWORD
 import smtplib
 import os
+import requests
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -78,6 +79,17 @@ async def reserve(request: Request, data: ReservationIn, db: Session = Depends(g
         )
         db.add(reservation)
         db.commit()
+
+        try:
+            requests.post("http://localhost:3001/notify", json={
+                "name": data.name,
+                "email": data.email,
+                "guests": data.guests,
+                "date": data.date,
+                "time": data.time,
+            }, timeout=2)
+        except:
+            pass
 
         sender = os.getenv("GMAIL_USER")
         password = os.getenv("GMAIL_PASSWORD")
@@ -196,7 +208,7 @@ async def update_status(id: int, update: StatusUpdate, db: Session = Depends(get
         The {RESTAURANT_NAME} Team
             """
 
-        msg.attach(MIMEText(body, "plain"))
+        msg.gross.attach(MIMEText(body, "plain"))
         server = smtplib.SMTP("smtp.gmail.com", 587)
         server.starttls()
         server.login(sender, password)
